@@ -10,3 +10,6 @@ ml/models/
 reports_out/
 .idea/
 .vscode/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/

@@ -14,11 +14,11 @@ MVP разбит на 8 этапов. Этап — логически закон
 
 **Требования:** FR-05
 **Задачи:**
-- [ ] Создать репозиторий, `docker compose up` поднимает PostgreSQL с миграциями V1 и V2
-- [ ] Каркас FastAPI: конфиг, подключение к БД (SQLAlchemy 2 или asyncpg), обработчик ошибок в формате RFC 7807 с `trace_id`, пагинация `page/size`
-- [ ] Модуль `academic`: `GET /groups`, `GET /students`, `GET /students/{id}`, `GET /subjects`
-- [ ] Скрипт заполнения справочников: группы, преподаватели, закрепления `staff_subject`
-- [ ] Подключить Swagger UI и сверить ответы со схемами из `edustat-openapi.yaml`
+- [x] Создать репозиторий, `docker compose up` поднимает PostgreSQL с миграциями V1 и V2
+- [x] Каркас FastAPI: конфиг, подключение к БД (SQLAlchemy 2 или asyncpg), обработчик ошибок в формате RFC 7807 с `trace_id`, пагинация `page/size`
+- [x] Модуль `academic`: `GET /groups`, `GET /students`, `GET /students/{id}`, `GET /subjects`
+- [x] Скрипт заполнения справочников: группы, преподаватели, закрепления `staff_subject`
+- [x] Подключить Swagger UI и сверить ответы со схемами из `edustat-openapi.yaml`
 
 **Готово, когда:** Swagger UI показывает 4 метода, ответы совпадают со схемами `Group`, `Student`, `Subject`.
 
