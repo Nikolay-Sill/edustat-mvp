@@ -6,7 +6,8 @@ services:
       POSTGRES_USER: edustat
       POSTGRES_PASSWORD: edustat      # только для локальной разработки
     ports:
-      - "5432:5432"
+      # Порт на хосте настраивается: 5432/5433 часто заняты локальным PostgreSQL или WSL
+      - "${EDUSTAT_DB_PORT:-55432}:5432"
     volumes:
       - ./db/migrations:/docker-entrypoint-initdb.d:ro   # V1, V2 применяются при первом запуске
       - pgdata:/var/lib/postgresql/data

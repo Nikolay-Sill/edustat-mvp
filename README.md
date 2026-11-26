@@ -65,12 +65,36 @@ edustat-mvp/
     └── deviations.md       # журнал отклонений от спецификации
 ```
 
-## Запуск (после этапа 1)
+## Запуск
+
+Нужны Docker и Python 3.12. Команды — из корня репозитория.
 
 ```bash
+# 1. База: PostgreSQL 16 на порту 55432, миграции V1 и V2 применяются при первом запуске
 docker compose up -d db
-# далее — инструкции по backend/frontend появятся по мере реализации
+
+# 2. Backend
+cd backend
+python -m venv .venv
+.venv/Scripts/activate          # Linux/macOS: source .venv/bin/activate
+pip install -e ".[dev]"
+cp .env.example .env            # необязательно: значения по умолчанию совпадают с docker-compose.yml
+
+# 3. Справочники и 30 демо-студентов (повторный запуск не создаёт дублей)
+python -m scripts.seed
+
+# 4. API: Swagger UI — http://localhost:8000/docs
+uvicorn app.main:app --reload
+
+# 5. Тесты: создают отдельную базу edustat_test и прогоняют на ней миграции
+pytest
 ```
+
+Если порт 55432 занят, задайте другой: `EDUSTAT_DB_PORT=55433 docker compose up -d db`
+и тот же порт в `EDUSTAT_DATABASE_URL` / `EDUSTAT_TEST_DATABASE_URL` в `backend/.env`.
+
+> **Пока без авторизации.** Спецификация требует JWT для всех методов, а преподаватель
+> должен видеть только свои группы (FR-24). Это реализуется на этапе 5; до него методы открыты.
 
 ## Данные
 
