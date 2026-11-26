@@ -1,0 +1,81 @@
+@startuml seq1_sync_risk
+' Рисунок 5.2 — Синхронизация с LMS и обнаружение риска (UML Sequence)
+skinparam defaultFontName Arial
+skinparam defaultFontSize 13
+skinparam shadowing false
+skinparam ArrowColor #333333
+skinparam sequence {
+  ParticipantBackgroundColor #F2F2F2
+  ParticipantBorderColor #555555
+  ActorBackgroundColor #F2F2F2
+  ActorBorderColor #555555
+  LifeLineBorderColor #888888
+  LifeLineBackgroundColor #FFFFFF
+  GroupBorderColor #888888
+}
+skinparam QueueBackgroundColor #F2F2F2
+skinparam QueueBorderColor #555555
+skinparam DatabaseBackgroundColor #F2F2F2
+skinparam DatabaseBorderColor #555555
+hide footbox
+
+participant "Планировщик" as SCH
+participant "LMS Integration\nService" as INT
+participant "Внешняя LMS" as LMS
+queue "Kafka" as K
+participant "Analytics\nService" as AN
+participant "Notification\nService" as NTF
+actor "Преподаватель" as T
+
+autonumber
+activate SCH
+SCH ->> INT : запуск синхронизации (каждые 6 ч)
+deactivate SCH
+activate INT
+INT -> INT : создать SYNC_JOB (status = RUNNING),\nupdated_from = время последней успешной синхронизации
+
+autonumber stop
+loop для /activities и /exams, постранично по 500 записей, пока has_next = true
+  INT -> LMS : GET /api/v1/{activities|exams}?updated_from=...&page=N&size=500
+  activate LMS
+  LMS --> INT : 200 OK, items[], has_next
+  deactivate LMS
+  INT -> INT : очистка, удаление дублей по id LMS,\nсопоставление по lms_external_id
+  INT -> INT : сохранить записи и событие в outbox\n(одна транзакция)
+  INT ->> K : lms.data.imported (sync_job_id, student_ids)
+  activate K
+  K -->> INT : подтверждение записи
+  deactivate K
+end
+autonumber resume
+
+INT -> INT : SYNC_JOB.status = SUCCESS
+
+activate K
+K ->> AN : lms.data.imported
+deactivate K
+deactivate INT
+activate AN
+AN -> AN : проверить event_id\n(событие ещё не обработано)
+AN -> AN : пересчёт метрик и прогнозов\nпо затронутым студентам
+AN ->> K : prediction.calculated
+activate K
+K -->> AN : подтверждение записи
+deactivate K
+
+alt уровень риска стал HIGH, открытого случая нет
+  AN -> AN : создать RISK_CASE (status = NEW)
+  AN ->> K : risk.detected (student_id, subject_id,\nstaff_id, risk_case_id, probability)
+  activate K
+  K ->> NTF : risk.detected
+  deactivate K
+  activate NTF
+  NTF -> NTF : проверка на дубль, выбор шаблона
+  NTF ->> T : e-mail и уведомление в личном кабинете
+  deactivate NTF
+else уровень риска стал HIGH, случай уже открыт
+  autonumber 9
+  AN -> AN : обновить карточку случая\n(без повторного уведомления)
+end
+deactivate AN
+@enduml

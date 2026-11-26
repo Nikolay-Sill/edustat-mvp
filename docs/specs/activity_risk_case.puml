@@ -1,0 +1,61 @@
+@startuml activity_risk_case
+' Рисунок 4.8 — Процесс работы со случаем риска (UML Activity, дорожки исполнителей)
+skinparam defaultFontName Arial
+skinparam defaultFontSize 13
+skinparam shadowing false
+skinparam ArrowColor #333333
+skinparam ActivityBackgroundColor #FFFFFF
+skinparam ActivityBorderColor #2E4A7D
+skinparam ActivityDiamondBackgroundColor #FFF4E5
+skinparam ActivityDiamondBorderColor #D9822B
+skinparam SwimlaneBorderColor #888888
+skinparam SwimlaneTitleFontStyle bold
+
+|Система EduStat|
+start
+:Рассчитан новый прогноз;
+if (Уровень риска HIGH?) then (нет)
+  :Обновить дашборды;
+  stop
+else (да)
+endif
+if (Случай по паре «студент — дисциплина»\nуже открыт?) then (да)
+  :Обновить карточку случая;
+  stop
+else (нет)
+  :Создать случай риска\n(статус NEW);
+  :Уведомить преподавателя\n(e-mail и личный кабинет);
+endif
+
+|Преподаватель|
+:Изучить активность и оценки студента;
+if (Риск подтверждён?) then (да)
+  :Назначить меру поддержки;
+  |Система EduStat|
+  :Статус IN_PROGRESS;
+  :Отслеживать прогнозы\nв течение 14 дней;
+  if (Риск снизился до LOW / MEDIUM?) then (да)
+    :Статус RESOLVED;
+  else (нет)
+    :Напомнить преподавателю;
+    |Преподаватель|
+    :Передать случай в деканат\nс комментарием;
+    |Система EduStat|
+    :Статус ESCALATED,\nуведомить деканат;
+    |Сотрудник деканата|
+    :Рассмотреть случай,\nпринять меры;
+    :Зафиксировать решение;
+    |Система EduStat|
+    :Статус RESOLVED;
+  endif
+  :Передать итог случая\nв выборку для дообучения модели;
+  stop
+else (нет)
+  |Преподаватель|
+  :Отметить «ложное срабатывание»\nс комментарием;
+  |Система EduStat|
+  :Статус FALSE_POSITIVE;
+  :Передать итог случая\nв выборку для дообучения модели;
+  stop
+endif
+@enduml

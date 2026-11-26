@@ -1,0 +1,15 @@
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: edustat
+      POSTGRES_USER: edustat
+      POSTGRES_PASSWORD: edustat      # только для локальной разработки
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./db/migrations:/docker-entrypoint-initdb.d:ro   # V1, V2 применяются при первом запуске
+      - pgdata:/var/lib/postgresql/data
+
+volumes:
+  pgdata:

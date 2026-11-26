@@ -1,0 +1,856 @@
+openapi: 3.0.3
+info:
+  title: EduStat API
+  version: 1.0.0
+  description: |
+    Внешний REST API системы предиктивной аналитики успеваемости EduStat.
+    Все запросы проходят через API Gateway и требуют JWT-токен (OAuth 2.0, Keycloak).
+    Формат данных — JSON, имена полей — snake_case, даты — ISO 8601 (UTC).
+    Ошибки возвращаются в формате RFC 7807 (application/problem+json).
+servers:
+  - url: https://edustat.example.ru/api/v1
+    description: Продуктивная среда
+  - url: https://test.edustat.example.ru/api/v1
+    description: Тестовая среда
+security:
+  - bearerAuth: []
+tags:
+  - name: Academic
+    description: Справочник контингента (Academic Service)
+  - name: Activity
+    description: Цифровой след из LMS (LMS Integration Service)
+  - name: Analytics
+    description: Прогнозы и группы риска (Analytics Service)
+  - name: RiskCases
+    description: Работа со случаями риска (Analytics Service)
+  - name: Reports
+    description: Отчёты (Reporting Service)
+  - name: Integration
+    description: Управление синхронизацией с LMS (только ADMIN)
+  - name: Notifications
+    description: Уведомления пользователя (Notification Service)
+
+paths:
+  /groups:
+    get:
+      tags: [Academic]
+      summary: Список учебных групп
+      description: TEACHER видит только группы, где ведёт дисциплины. DEAN_OFFICE и ADMIN — все группы.
+      operationId: listGroups
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Size'
+        - name: course
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 6 }
+      responses:
+        '200':
+          description: Список групп
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/PageMeta'
+                  - type: object
+                    properties:
+                      items:
+                        type: array
+                        items: { $ref: '#/components/schemas/Group' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /students:
+    get:
+      tags: [Academic]
+      summary: Список студентов с фильтрами
+      operationId: listStudents
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Size'
+        - name: group_id
+          in: query
+          schema: { type: integer }
+        - name: search
+          in: query
+          description: Поиск по части ФИО или e-mail (от 3 символов)
+          schema: { type: string, minLength: 3 }
+      responses:
+        '200':
+          description: Список студентов
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/PageMeta'
+                  - type: object
+                    properties:
+                      items:
+                        type: array
+                        items: { $ref: '#/components/schemas/Student' }
+              example:
+                items:
+                  - student_id: 1
+                    full_name: Иванов Иван Сергеевич
+                    email: ivanov@edu.example.ru
+                    birth_date: '2005-03-24'
+                    group_id: 12
+                    group_name: ИНБО-11-23
+                page: 1
+                size: 20
+                total_elements: 1
+                total_pages: 1
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /students/{student_id}:
+    get:
+      tags: [Academic]
+      summary: Карточка студента
+      description: STUDENT может запросить только свою карточку.
+      operationId: getStudent
+      parameters:
+        - $ref: '#/components/parameters/StudentId'
+      responses:
+        '200':
+          description: Карточка студента
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Student' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /subjects:
+    get:
+      tags: [Academic]
+      summary: Список дисциплин
+      operationId: listSubjects
+      parameters:
+        - name: group_id
+          in: query
+          schema: { type: integer }
+      responses:
+        '200':
+          description: Список дисциплин
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/Subject' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /students/{student_id}/activities:
+    get:
+      tags: [Activity]
+      summary: Цифровой след студента
+      operationId: listStudentActivities
+      parameters:
+        - $ref: '#/components/parameters/StudentId'
+        - name: subject_id
+          in: query
+          schema: { type: integer }
+        - name: date_from
+          in: query
+          schema: { type: string, format: date }
+        - name: date_to
+          in: query
+          schema: { type: string, format: date }
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Size'
+      responses:
+        '200':
+          description: Список действий студента в LMS
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/PageMeta'
+                  - type: object
+                    properties:
+                      items:
+                        type: array
+                        items: { $ref: '#/components/schemas/Activity' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /students/{student_id}/exam-results:
+    get:
+      tags: [Activity]
+      summary: Результаты контрольных мероприятий студента
+      operationId: listStudentExamResults
+      parameters:
+        - $ref: '#/components/parameters/StudentId'
+        - name: subject_id
+          in: query
+          schema: { type: integer }
+      responses:
+        '200':
+          description: Список результатов
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/ExamResult' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /students/{student_id}/predictions:
+    get:
+      tags: [Analytics]
+      summary: История прогнозов студента
+      operationId: listStudentPredictions
+      parameters:
+        - $ref: '#/components/parameters/StudentId'
+        - name: subject_id
+          in: query
+          schema: { type: integer }
+        - name: only_last
+          in: query
+          description: Вернуть только последний прогноз по каждой дисциплине
+          schema: { type: boolean, default: true }
+      responses:
+        '200':
+          description: Прогнозы
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/Prediction' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /risk-groups:
+    get:
+      tags: [Analytics]
+      summary: Студенты группы риска
+      description: |
+        Возвращает последний прогноз по каждой паре «студент — дисциплина».
+        TEACHER получает только свои группы и дисциплины, иначе 403.
+      operationId: listRiskGroup
+      parameters:
+        - name: group_id
+          in: query
+          schema: { type: integer }
+        - name: subject_id
+          in: query
+          schema: { type: integer }
+        - name: risk_level
+          in: query
+          schema: { $ref: '#/components/schemas/RiskLevel' }
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Size'
+        - name: sort
+          in: query
+          schema:
+            type: string
+            enum: [risk_probability_desc, full_name_asc]
+            default: risk_probability_desc
+      responses:
+        '200':
+          description: Список студентов с уровнем риска
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/PageMeta'
+                  - type: object
+                    properties:
+                      items:
+                        type: array
+                        items: { $ref: '#/components/schemas/RiskGroupItem' }
+              example:
+                items:
+                  - student_id: 1
+                    full_name: Иванов Иван Сергеевич
+                    group_name: ИНБО-11-23
+                    subject_id: 3
+                    subject_name: Базы данных
+                    risk_probability: 0.78
+                    risk_level: HIGH
+                    predicted_grade: 2.8
+                    risk_case_id: 105
+                    top_factors:
+                      - { factor: activity_drop_14d, value: -0.62, unit: ratio }
+                      - { factor: missed_assignments, value: 3, unit: count }
+                      - { factor: avg_test_score_pct, value: 41.5, unit: percent }
+                    calculated_at: '2026-10-18T06:00:00Z'
+                page: 1
+                size: 20
+                total_elements: 1
+                total_pages: 1
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /groups/{group_id}/metrics:
+    get:
+      tags: [Analytics]
+      summary: Сводные показатели группы для дашборда
+      operationId: getGroupMetrics
+      parameters:
+        - name: group_id
+          in: path
+          required: true
+          schema: { type: integer }
+        - name: subject_id
+          in: query
+          schema: { type: integer }
+      responses:
+        '200':
+          description: Показатели группы
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GroupMetrics' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /predictions/recalculate:
+    post:
+      tags: [Analytics]
+      summary: Принудительный пересчёт прогнозов (ADMIN)
+      operationId: recalculatePredictions
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                group_id: { type: integer }
+                subject_id: { type: integer }
+      responses:
+        '202':
+          description: Задача на пересчёт принята
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  task_id: { type: string, format: uuid }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /risk-cases:
+    get:
+      tags: [RiskCases]
+      summary: Случаи риска, закреплённые за пользователем
+      description: TEACHER видит свои случаи, DEAN_OFFICE — случаи в статусе ESCALATED.
+      operationId: listRiskCases
+      parameters:
+        - name: status
+          in: query
+          schema: { $ref: '#/components/schemas/RiskCaseStatus' }
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Size'
+      responses:
+        '200':
+          description: Список случаев
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/PageMeta'
+                  - type: object
+                    properties:
+                      items:
+                        type: array
+                        items: { $ref: '#/components/schemas/RiskCase' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /risk-cases/{risk_case_id}:
+    patch:
+      tags: [RiskCases]
+      summary: Обновить статус случая риска
+      description: |
+        Допустимые переходы статусов: NEW → IN_PROGRESS | FALSE_POSITIVE;
+        IN_PROGRESS → RESOLVED | ESCALATED | FALSE_POSITIVE (TEACHER);
+        ESCALATED → RESOLVED (DEAN_OFFICE, фиксирует принятое решение).
+        Для FALSE_POSITIVE, ESCALATED и перехода ESCALATED → RESOLVED комментарий обязателен.
+      operationId: updateRiskCase
+      parameters:
+        - name: risk_case_id
+          in: path
+          required: true
+          schema: { type: integer, format: int64 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RiskCaseUpdate' }
+            example:
+              status: IN_PROGRESS
+              measure: Консультация по теме «Нормализация»
+      responses:
+        '200':
+          description: Случай обновлён
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RiskCase' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: Недопустимый переход статуса
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+
+  /reports:
+    post:
+      tags: [Reports]
+      summary: Заказать формирование отчёта (асинхронно)
+      operationId: createReport
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ReportRequest' }
+            example:
+              report_type: RISK_SUMMARY
+              format: XLSX
+              filters:
+                group_ids: [12, 14]
+                date_from: '2026-09-01'
+                date_to: '2026-10-18'
+      responses:
+        '202':
+          description: Отчёт поставлен в очередь
+          headers:
+            Location:
+              description: Адрес для проверки статуса
+              schema: { type: string }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Report' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /reports/{report_id}:
+    get:
+      tags: [Reports]
+      summary: Статус отчёта
+      operationId: getReport
+      parameters:
+        - $ref: '#/components/parameters/ReportId'
+      responses:
+        '200':
+          description: Статус отчёта
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Report' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /reports/{report_id}/file:
+    get:
+      tags: [Reports]
+      summary: Скачать готовый отчёт
+      operationId: downloadReport
+      parameters:
+        - $ref: '#/components/parameters/ReportId'
+      responses:
+        '302':
+          description: Перенаправление на временную ссылку (действует 15 минут)
+          headers:
+            Location:
+              schema: { type: string, format: uri }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: Отчёт ещё не готов
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+
+  /sync-jobs:
+    get:
+      tags: [Integration]
+      summary: Журнал синхронизаций с LMS (ADMIN)
+      operationId: listSyncJobs
+      parameters:
+        - name: status
+          in: query
+          schema: { type: string, enum: [RUNNING, SUCCESS, FAILED] }
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Size'
+      responses:
+        '200':
+          description: Журнал
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/PageMeta'
+                  - type: object
+                    properties:
+                      items:
+                        type: array
+                        items: { $ref: '#/components/schemas/SyncJob' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [Integration]
+      summary: Запустить внеплановую синхронизацию (ADMIN)
+      operationId: startSyncJob
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [lms_source]
+              properties:
+                lms_source: { type: string, example: moodle }
+                updated_from: { type: string, format: date-time }
+      responses:
+        '202':
+          description: Синхронизация запущена
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SyncJob' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409':
+          description: Синхронизация по этому источнику уже выполняется
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+
+  /notifications:
+    get:
+      tags: [Notifications]
+      summary: Уведомления текущего пользователя
+      operationId: listNotifications
+      parameters:
+        - name: unread_only
+          in: query
+          schema: { type: boolean, default: false }
+      responses:
+        '200':
+          description: Список уведомлений
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/Notification' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /notifications/{notification_id}:
+    patch:
+      tags: [Notifications]
+      summary: Отметить уведомление прочитанным
+      operationId: markNotificationRead
+      parameters:
+        - name: notification_id
+          in: path
+          required: true
+          schema: { type: integer, format: int64 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [is_read]
+              properties:
+                is_read: { type: boolean }
+      responses:
+        '204': { description: Уведомление обновлено }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Access-токен Keycloak. Роль пользователя передаётся в claim realm_access.roles.
+
+  parameters:
+    Page:
+      name: page
+      in: query
+      schema: { type: integer, minimum: 1, default: 1 }
+    Size:
+      name: size
+      in: query
+      schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+    StudentId:
+      name: student_id
+      in: path
+      required: true
+      schema: { type: integer }
+    ReportId:
+      name: report_id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+
+  responses:
+    BadRequest:
+      description: Ошибка в параметрах запроса
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+          example:
+            type: https://edustat.example.ru/errors/validation
+            title: Validation error
+            status: 400
+            detail: Параметр date_from должен быть раньше date_to
+            instance: /api/v1/students/1/activities
+            trace_id: 4bf92f3577b34da6
+    Unauthorized:
+      description: Токен отсутствует или истёк
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    Forbidden:
+      description: Недостаточно прав для ресурса
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    NotFound:
+      description: Ресурс не найден
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+
+  schemas:
+    PageMeta:
+      type: object
+      required: [page, size, total_elements, total_pages]
+      properties:
+        page: { type: integer }
+        size: { type: integer }
+        total_elements: { type: integer }
+        total_pages: { type: integer }
+
+    Problem:
+      type: object
+      description: Ошибка в формате RFC 7807
+      required: [title, status]
+      properties:
+        type: { type: string, format: uri }
+        title: { type: string }
+        status: { type: integer }
+        detail: { type: string }
+        instance: { type: string }
+        trace_id: { type: string, description: Идентификатор для поиска в логах }
+
+    RiskLevel:
+      type: string
+      enum: [LOW, MEDIUM, HIGH]
+      description: LOW — вероятность < 0.30, MEDIUM — 0.30–0.59, HIGH — ≥ 0.60 (пороги настраиваются)
+
+    RiskCaseStatus:
+      type: string
+      enum: [NEW, IN_PROGRESS, RESOLVED, FALSE_POSITIVE, ESCALATED]
+
+    Group:
+      type: object
+      required: [group_id, group_name, course]
+      properties:
+        group_id: { type: integer }
+        group_name: { type: string, example: ИНБО-11-23 }
+        course: { type: integer, minimum: 1, maximum: 6 }
+        specialization: { type: string }
+
+    Student:
+      type: object
+      required: [student_id, full_name, email, group_id]
+      properties:
+        student_id: { type: integer }
+        full_name: { type: string }
+        email: { type: string, format: email }
+        birth_date: { type: string, format: date }
+        group_id: { type: integer }
+        group_name: { type: string }
+
+    Subject:
+      type: object
+      required: [subject_id, subject_name]
+      properties:
+        subject_id: { type: integer }
+        subject_name: { type: string }
+        total_hours: { type: integer }
+        control_form: { type: string, enum: [EXAM, CREDIT, GRADED_CREDIT] }
+
+    Activity:
+      type: object
+      required: [activity_id, student_id, subject_id, activity_type, occurred_at]
+      properties:
+        activity_id: { type: integer, format: int64 }
+        student_id: { type: integer }
+        subject_id: { type: integer }
+        activity_type: { type: string, enum: [LOGIN, VIEW_MATERIAL, TEST_ATTEMPT, ASSIGNMENT_SUBMIT, FORUM_POST] }
+        duration_sec: { type: integer, minimum: 0 }
+        occurred_at: { type: string, format: date-time }
+
+    ExamResult:
+      type: object
+      required: [exam_result_id, student_id, subject_id, exam_type, score, max_score, exam_date]
+      properties:
+        exam_result_id: { type: integer, format: int64 }
+        student_id: { type: integer }
+        subject_id: { type: integer }
+        exam_type: { type: string, enum: [TEST, CONTROL_WORK, MIDTERM, EXAM] }
+        score: { type: number }
+        max_score: { type: number }
+        exam_date: { type: string, format: date-time }
+
+    Prediction:
+      type: object
+      required: [prediction_id, student_id, subject_id, risk_probability, risk_level, created_at]
+      properties:
+        prediction_id: { type: integer, format: int64 }
+        student_id: { type: integer }
+        subject_id: { type: integer }
+        risk_probability: { type: number, minimum: 0, maximum: 1 }
+        risk_level: { $ref: '#/components/schemas/RiskLevel' }
+        predicted_grade: { type: number, minimum: 2, maximum: 5 }
+        model_version: { type: string, example: gradient_boosting-1.0 }
+        top_factors:
+          type: array
+          description: Три фактора, сильнее всего повлиявшие на прогноз (FR-09)
+          maxItems: 3
+          items: { $ref: '#/components/schemas/RiskFactor' }
+        created_at: { type: string, format: date-time }
+
+    RiskFactor:
+      type: object
+      required: [factor, value]
+      properties:
+        factor: { type: string, example: activity_drop_14d }
+        value: { type: number, example: -0.62 }
+        unit: { type: string, enum: [ratio, count, percent, hours] }
+
+    RiskGroupItem:
+      type: object
+      required: [student_id, full_name, subject_id, risk_probability, risk_level]
+      properties:
+        student_id: { type: integer }
+        full_name: { type: string }
+        group_name: { type: string }
+        subject_id: { type: integer }
+        subject_name: { type: string }
+        risk_probability: { type: number }
+        risk_level: { $ref: '#/components/schemas/RiskLevel' }
+        predicted_grade: { type: number }
+        risk_case_id: { type: integer, format: int64, nullable: true }
+        top_factors:
+          type: array
+          maxItems: 3
+          items: { $ref: '#/components/schemas/RiskFactor' }
+        calculated_at: { type: string, format: date-time }
+
+    GroupMetrics:
+      type: object
+      properties:
+        group_id: { type: integer }
+        students_total: { type: integer }
+        avg_score_pct: { type: number, description: Средний балл в процентах от максимума }
+        avg_hours_in_lms_week: { type: number }
+        risk_distribution:
+          type: object
+          properties:
+            LOW: { type: integer }
+            MEDIUM: { type: integer }
+            HIGH: { type: integer }
+        calculated_at: { type: string, format: date-time }
+
+    RiskCase:
+      type: object
+      required: [risk_case_id, prediction_id, student_id, status, created_at]
+      properties:
+        risk_case_id: { type: integer, format: int64 }
+        prediction_id: { type: integer, format: int64 }
+        student_id: { type: integer }
+        subject_id: { type: integer }
+        staff_id: { type: integer }
+        status: { $ref: '#/components/schemas/RiskCaseStatus' }
+        measure: { type: string, nullable: true }
+        comment: { type: string, nullable: true }
+        created_at: { type: string, format: date-time }
+        closed_at: { type: string, format: date-time, nullable: true }
+
+    RiskCaseUpdate:
+      type: object
+      required: [status]
+      properties:
+        status: { $ref: '#/components/schemas/RiskCaseStatus' }
+        measure: { type: string, maxLength: 255 }
+        comment: { type: string, maxLength: 2000 }
+
+    ReportRequest:
+      type: object
+      required: [report_type, format]
+      properties:
+        report_type: { type: string, enum: [RISK_SUMMARY, GROUP_PERFORMANCE, FACULTY_OVERVIEW] }
+        format: { type: string, enum: [PDF, XLSX] }
+        filters:
+          type: object
+          properties:
+            group_ids:
+              type: array
+              items: { type: integer }
+            subject_ids:
+              type: array
+              items: { type: integer }
+            date_from: { type: string, format: date }
+            date_to: { type: string, format: date }
+
+    Report:
+      type: object
+      required: [report_id, status]
+      properties:
+        report_id: { type: string, format: uuid }
+        report_type: { type: string }
+        format: { type: string }
+        status: { type: string, enum: [QUEUED, IN_PROGRESS, READY, FAILED] }
+        created_at: { type: string, format: date-time }
+        ready_at: { type: string, format: date-time, nullable: true }
+
+    SyncJob:
+      type: object
+      required: [sync_job_id, lms_source, status, started_at]
+      properties:
+        sync_job_id: { type: integer, format: int64 }
+        lms_source: { type: string }
+        status: { type: string, enum: [RUNNING, SUCCESS, FAILED] }
+        records_loaded: { type: integer }
+        error_message: { type: string, nullable: true }
+        started_at: { type: string, format: date-time }
+        finished_at: { type: string, format: date-time, nullable: true }
+
+    Notification:
+      type: object
+      required: [notification_id, type, title, created_at, is_read]
+      properties:
+        notification_id: { type: integer, format: int64 }
+        type: { type: string, enum: [RISK_DETECTED, RISK_CASE_OVERDUE, RISK_ESCALATED, REPORT_READY, SYNC_FAILED] }
+        title: { type: string }
+        body: { type: string }
+        link: { type: string, description: Ссылка на объект в интерфейсе }
+        created_at: { type: string, format: date-time }
+        is_read: { type: boolean }

@@ -1,0 +1,59 @@
+@startuml seq2_risk_group
+' Рисунок 5.3 — Получение списка группы риска с проверкой доступа (UML Sequence)
+skinparam defaultFontName Arial
+skinparam defaultFontSize 13
+skinparam shadowing false
+skinparam ArrowColor #333333
+skinparam sequence {
+  ParticipantBackgroundColor #F2F2F2
+  ParticipantBorderColor #555555
+  ActorBackgroundColor #F2F2F2
+  ActorBorderColor #555555
+  LifeLineBorderColor #888888
+  LifeLineBackgroundColor #FFFFFF
+  GroupBorderColor #888888
+}
+skinparam QueueBackgroundColor #F2F2F2
+skinparam QueueBorderColor #555555
+skinparam DatabaseBackgroundColor #F2F2F2
+skinparam DatabaseBorderColor #555555
+hide footbox
+
+actor "Преподаватель" as T
+participant "Web-клиент" as WEB
+participant "API Gateway" as GW
+participant "Analytics\nService" as AN
+participant "Academic\nService" as AC
+database "analytics_db" as DB
+
+autonumber
+T -> WEB : открыть «Группа риска»\nпо группе ИНБО-11-23
+activate WEB
+WEB -> GW : GET /api/v1/risk-groups?group_id=12&risk_level=HIGH\nAuthorization: Bearer <JWT>
+activate GW
+GW -> GW : проверить подпись и срок JWT\n(открытые ключи Keycloak в кэше),\nвзять staff_id и роль TEACHER
+GW -> AN : GET /risk-groups?group_id=12&risk_level=HIGH\n(X-Staff-Id, X-Role)
+activate AN
+AN -> AC : GET /internal/staff/{staff_id}/subjects?group_id=12
+activate AC
+AC --> AN : список закреплённых дисциплин
+deactivate AC
+
+alt нет закреплённых дисциплин
+  AN --> GW : 403 Forbidden (problem+json)
+  GW --> WEB : 403 «Нет доступа к группе»
+  WEB --> T : сообщение об ошибке
+else доступ есть
+  autonumber 7
+  AN -> DB : последние прогнозы HIGH\nпо дисциплинам преподавателя
+  activate DB
+  DB --> AN : строки прогнозов
+  deactivate DB
+  AN --> GW : 200 OK, список студентов\nс вероятностью риска
+  GW --> WEB : 200 OK
+  WEB --> T : таблица студентов\nс цветовой индикацией
+end
+deactivate AN
+deactivate GW
+deactivate WEB
+@enduml

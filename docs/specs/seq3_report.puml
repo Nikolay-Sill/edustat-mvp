@@ -1,0 +1,89 @@
+@startuml seq3_report
+' Рисунок 5.4 — Асинхронное формирование отчёта (UML Sequence)
+skinparam defaultFontName Arial
+skinparam defaultFontSize 13
+skinparam shadowing false
+skinparam ArrowColor #333333
+skinparam sequence {
+  ParticipantBackgroundColor #F2F2F2
+  ParticipantBorderColor #555555
+  ActorBackgroundColor #F2F2F2
+  ActorBorderColor #555555
+  LifeLineBorderColor #888888
+  LifeLineBackgroundColor #FFFFFF
+  GroupBorderColor #888888
+}
+skinparam QueueBackgroundColor #F2F2F2
+skinparam QueueBorderColor #555555
+skinparam DatabaseBackgroundColor #F2F2F2
+skinparam DatabaseBorderColor #555555
+hide footbox
+
+actor "Сотрудник\nдеканата" as D
+participant "API Gateway" as GW
+participant "Reporting\nService" as REP
+queue "Kafka" as K
+database "Хранилище\nфайлов S3 (MinIO)" as S3
+participant "Notification\nService" as NTF
+
+autonumber
+D -> GW : POST /api/v1/reports\n{report_type, filters, format = XLSX}
+activate GW
+GW -> REP : POST /reports
+activate REP
+REP -> REP : создать запись отчёта (status = QUEUED)\nи событие в outbox (одна транзакция)
+REP --> GW : 202 Accepted {report_id}
+GW --> D : 202 Accepted, Location: /reports/{report_id}
+deactivate GW
+REP ->> K : report.requested (report_id)
+activate K
+deactivate REP
+K ->> REP : report.requested (обработчик отчётов)
+deactivate K
+activate REP
+REP -> REP : status = IN_PROGRESS,\nсбор данных из витрины
+REP -> REP : формирование файла XLSX
+REP -> S3 : сохранить файл (срок хранения 7 дней)
+activate S3
+S3 --> REP : ok
+deactivate S3
+REP -> REP : status = READY
+REP ->> K : report.ready (report_id, author_id)
+activate K
+deactivate REP
+K ->> NTF : report.ready
+deactivate K
+activate NTF
+NTF ->> D : уведомление «Отчёт готов»
+deactivate NTF
+
+autonumber stop
+loop пока статус не READY или FAILED (если пользователь ждёт на странице)
+  D -> GW : GET /api/v1/reports/{report_id}
+  activate GW
+  GW -> REP : GET /reports/{report_id}
+  activate REP
+  REP --> GW : {status}
+  deactivate REP
+  GW --> D : 200 OK {status}
+  deactivate GW
+end
+autonumber resume
+
+D -> GW : GET /api/v1/reports/{report_id}/file
+activate GW
+GW -> REP : запрос временной ссылки
+activate REP
+REP -> S3 : подписанная ссылка (срок 15 мин)
+activate S3
+S3 --> REP : URL
+deactivate S3
+REP --> GW : URL
+deactivate REP
+GW --> D : 302 Found, Location: <временная ссылка>
+deactivate GW
+D -> S3 : скачать файл по ссылке
+activate S3
+S3 --> D : файл XLSX
+deactivate S3
+@enduml
