@@ -36,7 +36,7 @@
 ```
 edustat-mvp/
 ├── README.md
-├── ROADMAP.md                  # план по неделям с привязкой к FR
+├── ROADMAP.md                  # план по этапам с привязкой к FR
 ├── docker-compose.yml          # PostgreSQL 16 + автоприменение миграций
 ├── db/
 │   ├── migrations/
@@ -65,7 +65,7 @@ edustat-mvp/
     └── deviations.md       # журнал отклонений от спецификации
 ```
 
-## Запуск (после 1-й недели)
+## Запуск (после этапа 1)
 
 ```bash
 docker compose up -d db
@@ -76,4 +76,4 @@ docker compose up -d db
 
 Используется открытый датасет **OULAD** (Open University Learning Analytics Dataset,
 лицензия CC BY 4.0). Персональные данные в нём обезличены; ФИО и e-mail для интерфейса
-генерируются синтетически. Сопоставление таблиц — в `ROADMAP.md`, неделя 2.
+генерируются синтетически. Сопоставление таблиц — в `ROADMAP.md`, этап 2.
